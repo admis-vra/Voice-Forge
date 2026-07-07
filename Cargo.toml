@@ -1,0 +1,62 @@
+[package]
+name = "voiceforge"
+version = "0.1.0"
+edition = "2021"
+description = "VoiceForge — universal voice-typing utility (Speech → Text → Type)"
+license = "MIT"
+
+[[bin]]
+name = "voiceforge"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime + websocket (Deepgram streaming)
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["multipart", "json", "rustls-tls", "stream"] }
+
+# Audio capture
+cpal = "0.15"
+
+# UI + tray
+eframe = { version = "0.29", default-features = false, features = ["default_fonts", "glow"] }
+egui = "0.29"
+tray-icon = "0.19"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+# Secrets (Windows Credential Manager)
+keyring = { version = "3", features = ["windows-native"] }
+
+# Config + serde
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+directories = "5"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+
+# Errors
+anyhow = "1"
+thiserror = "1"
+whisper-rs = "0.16.0"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_DataExchange",
+    "Win32_System_Ole",
+    "Win32_System_Memory",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+] }
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true

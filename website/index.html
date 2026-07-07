@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoiceForge — Universal Voice Typing</title>
+  <meta name="description" content="Hold a hotkey, speak, and your words are typed into any app. VoiceForge is a universal voice-typing utility powered by OpenAI." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- 3D animated background canvas -->
+  <canvas id="bg-canvas"></canvas>
+
+  <!-- Nav -->
+  <header class="nav">
+    <a class="brand" href="#top">
+      <span class="brand-mark"></span>
+      <span>VoiceForge</span>
+    </a>
+    <nav class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="#download">Download</a>
+      <a href="#apikey">API key</a>
+      <a class="nav-cta" href="#download">Get it free</a>
+    </nav>
+  </header>
+
+  <!-- Hero -->
+  <section class="hero" id="top">
+    <div class="hero-inner">
+      <div class="pill">Speech → Text → Type</div>
+      <h1 class="hero-title">
+        Talk anywhere.<br /><span class="grad">It just gets typed.</span>
+      </h1>
+      <p class="hero-sub">
+        VoiceForge is a universal voice-typing tool. Hold a hotkey, speak naturally, and
+        your words appear at the cursor — in any app, browser, editor, terminal, or chat.
+        No copy-paste. No window switching.
+      </p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#download">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 3v10.6l3.3-3.3 1.4 1.4L12 17.4l-4.7-5.7 1.4-1.4L12 13.6V3zM5 19h14v2H5z"/></svg>
+          Download for Windows
+        </a>
+        <a class="btn btn-ghost" href="#how">See how it works</a>
+      </div>
+      <div class="hero-meta">
+        <span><b>Alt&nbsp;+&nbsp;Space</b> to talk</span>
+        <span class="dot">•</span>
+        <span><b>100% offline</b> by default</span>
+        <span class="dot">•</span>
+        <span>No API key · No account</span>
+      </div>
+    </div>
+    <div class="scroll-hint" aria-hidden="true">
+      <span></span>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="section" id="features">
+    <div class="section-head">
+      <h2>Built to disappear into your workflow</h2>
+      <p>Lives in your system tray. Uses zero mic and zero network until you hold the key.</p>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <div class="card-ico">⌨️</div>
+        <h3>Types into anything</h3>
+        <p>Uses native keystroke injection, so text lands wherever your cursor is — VS Code, ChatGPT, Word, Slack, terminals, forms.</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">⚡</div>
+        <h3>Push-to-talk</h3>
+        <p>Hold your hotkey to listen, release to type. Instant, deliberate, and never listening when you don't want it to.</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">🎙️</div>
+        <h3>Offline transcription</h3>
+        <p>Runs <b>local Whisper</b> (whisper.cpp) on your machine — no API key, no account, no internet. Cloud options (OpenAI, Deepgram) are one click away in Settings.</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">🔒</div>
+        <h3>Private by design</h3>
+        <p>By default your voice never leaves your computer. Audio is only captured while the key is held, and never saved to disk.</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">🌐</div>
+        <h3>Any language</h3>
+        <p>Pick your language in Settings. Dictate in English, Spanish, French, and more.</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">🪶</div>
+        <h3>Featherweight</h3>
+        <p>A single native Rust binary. Low memory, near-zero idle CPU, and a tray icon you'll forget is there.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="section alt" id="how">
+    <div class="section-head">
+      <h2>Four seconds to your first word</h2>
+      <p>The whole loop, every time you talk:</p>
+    </div>
+    <div class="steps">
+      <div class="step"><span class="step-n">1</span><h3>Hold the hotkey</h3><p>Default <b>Alt&nbsp;+&nbsp;Space</b>. The tray icon turns red — it's listening.</p></div>
+      <div class="step"><span class="step-n">2</span><h3>Speak naturally</h3><p>Your mic streams securely to your chosen provider.</p></div>
+      <div class="step"><span class="step-n">3</span><h3>Release</h3><p>Recording stops instantly and the transcript is finalized.</p></div>
+      <div class="step"><span class="step-n">4</span><h3>It's typed</h3><p>The text is injected at your cursor. Back to idle.</p></div>
+    </div>
+  </section>
+
+  <!-- Download -->
+  <section class="section" id="download">
+    <div class="section-head">
+      <h2>Download VoiceForge</h2>
+      <p>Free and open source. Choose your platform.</p>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="win" role="tab">Windows</button>
+      <button class="tab" data-tab="mac" role="tab">macOS</button>
+      <button class="tab" data-tab="linux" role="tab">Linux</button>
+    </div>
+
+    <div class="tab-panel active" id="tab-win">
+      <div class="dl-card">
+        <div class="dl-head">
+          <div class="os-badge">⊞</div>
+          <div>
+            <h3>Windows 10 / 11</h3>
+            <p class="muted">Prebuilt, ready to run. No installer needed.</p>
+          </div>
+          <a class="btn btn-primary" href="downloads/voiceforge-windows-x64.exe" download>
+            Download .exe
+          </a>
+        </div>
+        <ol class="install-steps">
+          <li>Download <code>voiceforge-windows-x64.exe</code> above.</li>
+          <li>Double-click it. If Windows SmartScreen warns (unsigned app), click <b>More info → Run anyway</b>.</li>
+          <li>VoiceForge appears in your <b>system tray</b> (near the clock). On first run it downloads the offline Whisper model automatically (~142 MB, one time).</li>
+          <li>Put your cursor anywhere, hold <b>Alt&nbsp;+&nbsp;Space</b>, speak, release. Done — <b>no API key or account needed</b>.</li>
+        </ol>
+        <p class="tip">Want a cloud engine instead? Right-click the tray → <b>Settings…</b> → set the provider and paste a key (<a href="#apikey">optional guide below</a>). Toggle <b>Launch at Windows startup</b> there too.</p>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tab-mac">
+      <div class="dl-card">
+        <div class="dl-head">
+          <div class="os-badge"></div>
+          <div>
+            <h3>macOS</h3>
+            <p class="muted">Build from source (native Apple Silicon &amp; Intel).</p>
+          </div>
+          <a class="btn btn-ghost" href="https://www.rust-lang.org/tools/install" target="_blank" rel="noopener">Get Rust</a>
+        </div>
+        <p class="note">
+          A prebuilt macOS binary isn't available yet. The codebase is cross-platform by
+          design — building takes two commands:
+        </p>
+        <pre class="code"><code>git clone &lt;your-repo-url&gt; voiceforge
+cd voiceforge
+cargo run --release</code></pre>
+        <p class="tip">macOS will ask for <b>Microphone</b> and <b>Accessibility</b> permissions the first time (needed for the global hotkey and typing into other apps). Grant both in <b>System Settings → Privacy &amp; Security</b>.</p>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tab-linux">
+      <div class="dl-card">
+        <div class="dl-head">
+          <div class="os-badge">🐧</div>
+          <div>
+            <h3>Linux</h3>
+            <p class="muted">Build from source (X11 / Wayland).</p>
+          </div>
+          <a class="btn btn-ghost" href="https://www.rust-lang.org/tools/install" target="_blank" rel="noopener">Get Rust</a>
+        </div>
+        <p class="note">Install the audio/dev headers, then build:</p>
+        <pre class="code"><code># Debian/Ubuntu
+sudo apt install libasound2-dev libxdo-dev pkg-config
+git clone &lt;your-repo-url&gt; voiceforge
+cd voiceforge
+cargo run --release</code></pre>
+        <p class="tip">Global hotkeys and synthetic typing behave differently across desktops; X11 is best supported today.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- API key guide -->
+  <section class="section alt" id="apikey">
+    <div class="section-head">
+      <h2>Optional: use a cloud engine with your own API key</h2>
+      <p>VoiceForge is <b>fully offline by default</b> — you don't need any of this. But if you'd rather use OpenAI or Deepgram, plug in <b>your own</b> key and stay in control of usage and cost.</p>
+    </div>
+
+    <div class="apikey-wrap">
+      <div class="apikey-steps">
+        <div class="ak-step">
+          <span class="ak-n">1</span>
+          <div>
+            <h3>Create an OpenAI API key</h3>
+            <p>Go to <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a>, sign in, and click <b>Create new secret key</b>. Copy it — it looks like <code>sk-proj-…</code>. You'll only see it once.</p>
+          </div>
+        </div>
+        <div class="ak-step">
+          <span class="ak-n">2</span>
+          <div>
+            <h3>Add billing / credits</h3>
+            <p>Transcription is pay-as-you-go and inexpensive. Add a payment method or credits under <b>Billing</b> so requests succeed.</p>
+          </div>
+        </div>
+        <div class="ak-step">
+          <span class="ak-n">3</span>
+          <div>
+            <h3>Paste it into VoiceForge</h3>
+            <p>Open the tray → <b>Settings…</b>, make sure <b>Speech provider</b> is <b>OpenAI</b>, paste your key into <b>OpenAI API key</b>, and click <b>Save key</b>. It's stored securely in your OS credential vault — never in a file.</p>
+          </div>
+        </div>
+        <div class="ak-step">
+          <span class="ak-n">4</span>
+          <div>
+            <h3>Talk</h3>
+            <p>Place your cursor anywhere, hold <b>Alt&nbsp;+&nbsp;Space</b>, and speak. Prefer Deepgram? Choose it as the provider and paste a Deepgram key instead.</p>
+          </div>
+        </div>
+      </div>
+
+      <aside class="apikey-aside">
+        <h4>Good to know</h4>
+        <ul>
+          <li><b>Keep keys secret.</b> Never share or commit a key. If one leaks, revoke it and create a new one.</li>
+          <li><b>No key? Try Mock.</b> Set the provider to <b>Mock</b> in Settings to test the flow offline — it types a placeholder.</li>
+          <li><b>Where it's stored:</b> Windows Credential Manager (service <code>VoiceForge</code>).</li>
+          <li><b>Costs are yours to see</b> in your provider dashboard — VoiceForge adds nothing.</li>
+        </ul>
+      </aside>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta">
+    <h2>Your keyboard, replaced by your voice.</h2>
+    <a class="btn btn-primary btn-lg" href="#download">Download VoiceForge free</a>
+  </section>
+
+  <footer class="footer">
+    <div class="brand"><span class="brand-mark"></span> VoiceForge</div>
+    <p class="muted">Speech → Text → Type. Open source, MIT licensed. Not affiliated with OpenAI or Deepgram.</p>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="js/three-hero.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

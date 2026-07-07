@@ -1,0 +1,14 @@
+# Build configuration for VoiceForge.
+#
+# The local Whisper engine (whisper-rs → whisper.cpp) needs two things at BUILD time on
+# Windows:
+#   1. libclang (from LLVM) for binding generation — LIBCLANG_PATH points to it.
+#   2. A CMake generator CMake actually supports — we pin the VS 2022 toolchain because
+#      the bundled CMake doesn't recognize newer auto-detected generators.
+#
+# These make `cargo build` / `cargo run` work with no manual `export` needed.
+# On macOS/Linux these are ignored/overridden (libclang is found via the system, and the
+# CMake generator defaults to Make/Ninja); adjust or remove if you build there.
+[env]
+LIBCLANG_PATH = "C:/Program Files/LLVM/bin"
+CMAKE_GENERATOR = "Visual Studio 17 2022"
