@@ -25,8 +25,14 @@ egui = "0.29"
 tray-icon = "0.19"
 image = { version = "0.25", default-features = false, features = ["png"] }
 
-# Secrets (Windows Credential Manager)
-keyring = { version = "3", features = ["windows-native"] }
+# Secrets (OS credential vault: Windows Credential Manager, macOS Keychain, Linux Secret Service)
+keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service"] }
+
+# Cross-platform global hotkey, keystroke injection, clipboard, and autostart
+global-hotkey = "0.6"
+enigo = "0.2"
+arboard = "3"
+auto-launch = "0.5"
 
 # Config + serde
 serde = { version = "1", features = ["derive"] }
@@ -44,17 +50,10 @@ anyhow = "1"
 thiserror = "1"
 whisper-rs = "0.16.0"
 
+# Win32 message pump for the tray icon thread (tray-icon needs this only on Windows;
+# macOS/Linux backends run their own native event loop).
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.58", features = [
-    "Win32_Foundation",
-    "Win32_UI_WindowsAndMessaging",
-    "Win32_UI_Input_KeyboardAndMouse",
-    "Win32_System_DataExchange",
-    "Win32_System_Ole",
-    "Win32_System_Memory",
-    "Win32_System_LibraryLoader",
-    "Win32_System_Threading",
-] }
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 
 [profile.release]
 opt-level = 3

@@ -62,9 +62,9 @@ fn get_context(path: &PathBuf) -> Result<Arc<WhisperContext>> {
 
 /// Downloads (if needed) and preloads the model so the first dictation is instant.
 /// Best-effort: errors are logged, not propagated, so startup never fails on this.
-pub async fn prefetch(model_name: &str, mut on_status: impl FnMut(String)) {
+pub async fn prefetch(model_name: &str, mut on_status: impl FnMut(String, Option<f32>)) {
     let info = model::resolve(model_name);
-    match model::ensure(info, |s| on_status(s)).await {
+    match model::ensure(info, |s, pct| on_status(s, pct)).await {
         Ok(path) => {
             // Warm the context on a blocking thread.
             let _ = tokio::task::spawn_blocking(move || {
@@ -78,7 +78,15 @@ pub async fn prefetch(model_name: &str, mut on_status: impl FnMut(String)) {
     }
 }
 
-/// Provider entry point: buffer audio, transcribe locally, return the text.
+/// Audio is transcribed in chunks of this many seconds while the hotkey is still held,
+/// instead of waiting for release to transcribe the whole utterance at once. This keeps
+/// almost all of the inference latency off the critical path after release, so injected
+/// text appears close to instantly instead of after a delay proportional to how long the
+/// user spoke.
+const CHUNK_SECS: f32 = 3.0;
+
+/// Provider entry point: transcribes audio incrementally in chunks as it arrives, then
+/// the short leftover tail on release, and returns the concatenated text.
 pub async fn run<F>(
     model_name: String,
     params: StreamParams,
@@ -88,35 +96,74 @@ pub async fn run<F>(
 where
     F: FnMut(TranscriptEvent) + Send + 'static,
 {
-    // Collect PCM until capture ends (hotkey released).
-    let mut samples: Vec<i16> = Vec::new();
-    while let Some(frame) = audio.recv().await {
-        samples.extend_from_slice(&frame);
-    }
-    if samples.is_empty() {
-        return Ok(String::new());
-    }
-
-    // Ensure the model is available (may download on first ever use).
+    // Ensure the model is available (may download on first ever use) before we start
+    // receiving audio, so the first chunk doesn't stall on a download/load.
     let info: &ModelInfo = model::resolve(&model_name);
-    let path = model::ensure(info, |s| on_event(TranscriptEvent::Interim(s)))
-        .await
-        .context("preparing Whisper model")?;
-
-    let audio_f32 = resample_to_16k(&samples, params.sample_rate);
-    let secs = audio_f32.len() as f32 / TARGET_RATE as f32;
-    tracing::info!("transcribing {secs:.2}s locally with Whisper '{}'", info.name);
+    let path = model::ensure(info, |message, percent| {
+        on_event(TranscriptEvent::Progress { message, percent })
+    })
+    .await
+    .context("preparing Whisper model")?;
 
     let language = normalize_lang(&params.language);
+    let chunk_len = (params.sample_rate as f32 * CHUNK_SECS) as usize;
 
-    // Run CPU-bound inference off the async runtime.
-    let text = tokio::task::spawn_blocking(move || transcribe(&path, &audio_f32, language))
-        .await
-        .context("transcription task panicked")??;
+    let mut pending: Vec<i16> = Vec::new();
+    let mut committed = String::new();
 
-    let text = text.trim().to_string();
-    on_event(TranscriptEvent::Final(text.clone()));
-    Ok(text)
+    while let Some(frame) = audio.recv().await {
+        pending.extend_from_slice(&frame);
+        if pending.len() >= chunk_len {
+            let chunk = std::mem::take(&mut pending);
+            let text = transcribe_chunk(&path, &chunk, params.sample_rate, language.clone())
+                .await
+                .context("transcription task panicked")??;
+            append_segment(&mut committed, &text);
+            if !text.is_empty() {
+                on_event(TranscriptEvent::Final(text));
+            }
+        }
+    }
+
+    // Transcribe whatever's left over after the hotkey was released.
+    if !pending.is_empty() {
+        let text = transcribe_chunk(&path, &pending, params.sample_rate, language)
+            .await
+            .context("transcription task panicked")??;
+        append_segment(&mut committed, &text);
+        if !text.is_empty() {
+            on_event(TranscriptEvent::Final(text.clone()));
+        }
+    }
+
+    let committed = committed.trim().to_string();
+    Ok(committed)
+}
+
+/// Resamples and runs inference on one chunk off the async runtime.
+async fn transcribe_chunk(
+    path: &PathBuf,
+    samples: &[i16],
+    sample_rate: u32,
+    language: Option<String>,
+) -> Result<Result<String>> {
+    let audio_f32 = resample_to_16k(samples, sample_rate);
+    let secs = audio_f32.len() as f32 / TARGET_RATE as f32;
+    tracing::info!("transcribing {secs:.2}s locally with Whisper");
+    let path = path.clone();
+    Ok(tokio::task::spawn_blocking(move || transcribe(&path, &audio_f32, language)).await?)
+}
+
+/// Appends a chunk's trimmed text to the running transcript, joined by a space.
+fn append_segment(committed: &mut String, text: &str) {
+    let text = text.trim();
+    if text.is_empty() {
+        return;
+    }
+    if !committed.is_empty() {
+        committed.push(' ');
+    }
+    committed.push_str(text);
 }
 
 /// Synchronous local inference. Returns the concatenated segment text.

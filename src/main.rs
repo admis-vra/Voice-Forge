@@ -27,7 +27,7 @@ mod ui;
 
 use anyhow::Result;
 
-use app::SharedState;
+use app::{SharedState, Status};
 use config::Config;
 
 fn main() -> Result<()> {
@@ -76,7 +76,12 @@ fn main() -> Result<()> {
                         return;
                     }
                 };
-                rt.block_on(stt::whisper::prefetch(&model, |s| st.set_last_transcript(s)));
+                rt.block_on(stt::whisper::prefetch(&model, |message, percent| {
+                    st.set_status(Status::Downloading { message, percent })
+                }));
+                // Prefetch only ever runs before any dictation, so it's always safe to
+                // drop back to Idle once it's done (whether it downloaded or not).
+                st.set_status(Status::Idle);
             })
             .ok();
     }
@@ -95,12 +100,18 @@ fn main() -> Result<()> {
     tracing::info!("{} input device(s) found", mic_devices.len());
 
     // Launch the settings window hidden — VoiceForge lives in the tray.
+    let logo = icon::app_icon(128);
     let native_options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("VoiceForge")
             .with_inner_size([460.0, 560.0])
             .with_min_inner_size([420.0, 420.0])
-            .with_visible(false),
+            .with_visible(false)
+            .with_icon(eframe::egui::IconData {
+                rgba: logo.bytes,
+                width: logo.width,
+                height: logo.height,
+            }),
         ..Default::default()
     };
 

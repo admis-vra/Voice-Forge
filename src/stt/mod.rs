@@ -25,6 +25,9 @@ pub enum TranscriptEvent {
     Interim(String),
     /// A finalized segment that will not change.
     Final(String),
+    /// Non-transcript progress (e.g. downloading a local model on first use). Kept
+    /// separate from `Interim`/`Final` so callers don't mistake it for recognized speech.
+    Progress { message: String, percent: Option<f32> },
 }
 
 /// Parameters describing the audio being streamed.

@@ -1,6 +1,7 @@
 /* VoiceForge — animated 3D background.
- * A pulsing wireframe "voice orb" surrounded by a drifting particle field, with subtle
- * mouse parallax. Designed to be lightweight and to degrade gracefully. */
+ * A circular audio-waveform visualizer: rings of bars pulsing to layered sine waves,
+ * like a voice equalizer, plus a breathing wireframe core. Fully deterministic —
+ * no randomness, just rhythmic motion driven by time. */
 (function () {
   const canvas = document.getElementById('bg-canvas');
   if (!canvas || typeof THREE === 'undefined') return;
@@ -9,7 +10,8 @@
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
-  camera.position.z = 6;
+  camera.position.set(0, 1.4, 8);
+  camera.lookAt(0, 0, 0);
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -17,90 +19,109 @@
 
   const BRAND = new THREE.Color(0x6d5efc);
   const CYAN = new THREE.Color(0x29d3ff);
+  const PINK = new THREE.Color(0xff4d6d);
 
-  // --- Voice orb: an icosahedron whose vertices breathe like a waveform ---
-  const geo = new THREE.IcosahedronGeometry(2, 5);
-  const basePositions = geo.attributes.position.array.slice();
-  const orbMat = new THREE.MeshBasicMaterial({
-    color: BRAND,
-    wireframe: true,
-    transparent: true,
-    opacity: 0.55,
+  const group = new THREE.Group();
+  scene.add(group);
+
+  // --- Breathing wireframe core, the "voice" at the center ---
+  const coreGeo = new THREE.IcosahedronGeometry(1.3, 4);
+  const coreBase = coreGeo.attributes.position.array.slice();
+  const coreMat = new THREE.MeshBasicMaterial({ color: BRAND, wireframe: true, transparent: true, opacity: 0.5 });
+  const core = new THREE.Mesh(coreGeo, coreMat);
+  group.add(core);
+
+  const glowMat = new THREE.MeshBasicMaterial({ color: CYAN, transparent: true, opacity: 0.06 });
+  const glow = new THREE.Mesh(new THREE.IcosahedronGeometry(0.9, 2), glowMat);
+  group.add(glow);
+
+  // --- Sound-wave rings: concentric circles of bars, height driven by a waveform function ---
+  const RINGS = [
+    { radius: 2.4, count: 64, baseHeight: 0.18, amp: 0.55, speed: 1.4, freq: 3, color: CYAN, y: 0 },
+    { radius: 3.4, count: 80, baseHeight: 0.14, amp: 0.4, speed: 1.1, freq: 5, color: BRAND, y: 0 },
+    { radius: 4.4, count: 96, baseHeight: 0.1, amp: 0.3, speed: 0.9, freq: 7, color: PINK, y: 0 },
+  ];
+
+  const barMeshes = [];
+  RINGS.forEach((ring) => {
+    const barGeo = new THREE.BoxGeometry(0.045, 1, 0.045);
+    const mat = new THREE.MeshBasicMaterial({ color: ring.color, transparent: true, opacity: 0.55 });
+    const mesh = new THREE.InstancedMesh(barGeo, mat, ring.count);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    group.add(mesh);
+    barMeshes.push({ mesh, ring });
   });
-  const orb = new THREE.Mesh(geo, orbMat);
-  scene.add(orb);
 
-  // Inner glow core
-  const coreMat = new THREE.MeshBasicMaterial({ color: CYAN, transparent: true, opacity: 0.08 });
-  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.4, 2), coreMat);
-  scene.add(core);
+  const dummy = new THREE.Object3D();
 
-  // --- Particle field ---
-  const COUNT = 900;
-  const pGeo = new THREE.BufferGeometry();
-  const pPos = new Float32Array(COUNT * 3);
-  for (let i = 0; i < COUNT; i++) {
-    const r = 6 + Math.random() * 14;
-    const theta = Math.random() * Math.PI * 2;
-    const phi = Math.acos(2 * Math.random() - 1);
-    pPos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-    pPos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-    pPos[i * 3 + 2] = r * Math.cos(phi);
+  function updateBars(t) {
+    barMeshes.forEach(({ mesh, ring }) => {
+      for (let i = 0; i < ring.count; i++) {
+        const angle = (i / ring.count) * Math.PI * 2;
+        const wave =
+          Math.sin(t * ring.speed + angle * ring.freq) * 0.6 +
+          Math.sin(t * ring.speed * 1.7 + angle * ring.freq * 0.5) * 0.4;
+        const h = ring.baseHeight + Math.abs(wave) * ring.amp;
+        const x = Math.cos(angle) * ring.radius;
+        const z = Math.sin(angle) * ring.radius;
+        dummy.position.set(x, h / 2 - 0.4, z);
+        dummy.scale.set(1, h, 1);
+        dummy.rotation.y = -angle;
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+    });
   }
-  pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
-  const pMat = new THREE.PointsMaterial({ color: CYAN, size: 0.035, transparent: true, opacity: 0.7 });
-  const particles = new THREE.Points(pGeo, pMat);
-  scene.add(particles);
 
-  // Mouse parallax
+  // Mouse parallax — smooth, no jitter
   const mouse = { x: 0, y: 0, tx: 0, ty: 0 };
   window.addEventListener('mousemove', (e) => {
     mouse.tx = (e.clientX / window.innerWidth - 0.5) * 2;
     mouse.ty = (e.clientY / window.innerHeight - 0.5) * 2;
   });
 
-  const posAttr = geo.attributes.position;
+  const corePosAttr = coreGeo.attributes.position;
   let t = 0;
 
-  function deform() {
-    // Displace each vertex along its normal by layered sine waves → "speaking" pulse.
-    for (let i = 0; i < posAttr.count; i++) {
+  function deformCore() {
+    for (let i = 0; i < corePosAttr.count; i++) {
       const ix = i * 3;
-      const bx = basePositions[ix], by = basePositions[ix + 1], bz = basePositions[ix + 2];
+      const bx = coreBase[ix], by = coreBase[ix + 1], bz = coreBase[ix + 2];
       const len = Math.sqrt(bx * bx + by * by + bz * bz) || 1;
       const nx = bx / len, ny = by / len, nz = bz / len;
       const wave =
-        0.16 * Math.sin(t * 1.6 + bx * 1.5) +
-        0.13 * Math.sin(t * 1.2 + by * 1.8) +
-        0.10 * Math.cos(t * 2.0 + bz * 1.6);
+        0.12 * Math.sin(t * 1.8 + bx * 1.5) +
+        0.09 * Math.sin(t * 1.3 + by * 1.8) +
+        0.07 * Math.cos(t * 2.2 + bz * 1.6);
       const d = len + wave;
-      posAttr.array[ix] = nx * d;
-      posAttr.array[ix + 1] = ny * d;
-      posAttr.array[ix + 2] = nz * d;
+      corePosAttr.array[ix] = nx * d;
+      corePosAttr.array[ix + 1] = ny * d;
+      corePosAttr.array[ix + 2] = nz * d;
     }
-    posAttr.needsUpdate = true;
+    corePosAttr.needsUpdate = true;
   }
 
   function animate() {
-    t += prefersReduced ? 0.004 : 0.012;
+    t += prefersReduced ? 0.004 : 0.014;
 
-    if (!prefersReduced) deform();
+    if (!prefersReduced) {
+      deformCore();
+      updateBars(t);
+    }
 
-    orb.rotation.y += 0.0024;
-    orb.rotation.x += 0.0011;
-    core.rotation.y -= 0.0018;
-    particles.rotation.y += 0.0006;
+    core.rotation.y += 0.0022;
+    glow.rotation.y -= 0.0016;
+    group.rotation.y = Math.sin(t * 0.12) * 0.15;
 
-    // Ease mouse parallax
     mouse.x += (mouse.tx - mouse.x) * 0.04;
     mouse.y += (mouse.ty - mouse.y) * 0.04;
-    camera.position.x = mouse.x * 0.6;
-    camera.position.y = -mouse.y * 0.6;
+    camera.position.x = mouse.x * 0.7;
+    camera.position.y = 1.4 - mouse.y * 0.5;
     camera.lookAt(0, 0, 0);
 
-    // Hue shimmer between brand and cyan
     const mix = (Math.sin(t * 0.5) + 1) / 2;
-    orbMat.color.copy(BRAND).lerp(CYAN, mix * 0.5);
+    coreMat.color.copy(BRAND).lerp(CYAN, mix * 0.5);
 
     renderer.render(scene, camera);
     requestAnimationFrame(animate);

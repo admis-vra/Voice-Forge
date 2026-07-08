@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use crate::config::Config;
 
 /// High-level runtime status, surfaced in the tray glyph and dashboard.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Status {
     /// Idle in the background, waiting for the hotkey. No mic, no network.
     Idle,
@@ -17,6 +17,9 @@ pub enum Status {
     Listening,
     /// Injecting the recognized text into the focused app.
     Injecting,
+    /// Fetching a local model (e.g. first-ever Whisper use). `percent` is `None` while
+    /// size is still unknown or the step has no numeric progress (e.g. "ready").
+    Downloading { message: String, percent: Option<f32> },
     /// A recoverable error occurred; the message is shown to the user.
     Error(String),
 }
@@ -28,6 +31,7 @@ impl Status {
             Status::Idle => "Idle".into(),
             Status::Listening => "Listening…".into(),
             Status::Injecting => "Typing…".into(),
+            Status::Downloading { message, .. } => message.clone(),
             Status::Error(m) => format!("Error: {m}"),
         }
     }

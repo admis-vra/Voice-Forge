@@ -18,6 +18,7 @@ use anyhow::{Context, Result};
 use eframe::egui;
 use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
+#[cfg(windows)]
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE,
 };
@@ -139,9 +140,13 @@ pub fn spawn(state: SharedState, ctx: egui::Context, quitting: Arc<AtomicBool>) 
             };
             tracing::info!("tray created");
 
+            #[cfg(windows)]
             let mut msg = MSG::default();
             loop {
                 // Pump any pending Win32 messages so the tray's window can show its menu.
+                // Not needed on macOS/Linux, where tray-icon drives its own native event
+                // loop (AppKit / GTK) independently of this thread.
+                #[cfg(windows)]
                 unsafe {
                     while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
                         let _ = TranslateMessage(&msg);
@@ -153,6 +158,7 @@ pub fn spawn(state: SharedState, ctx: egui::Context, quitting: Arc<AtomicBool>) 
                 while let Ok(event) = MenuEvent::receiver().try_recv() {
                     match tray.match_event(&event) {
                         Some(TrayAction::OpenSettings) => {
+                            tracing::info!("settings requested from tray");
                             // Make the window visible, un-minimize, and bring it forward.
                             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
                             ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));

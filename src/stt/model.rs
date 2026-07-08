@@ -87,17 +87,22 @@ pub fn is_present(info: &ModelInfo) -> bool {
 }
 
 /// Ensures the model is present, downloading it if necessary. `on_progress` is called
-/// with a human-readable status line (e.g. for the UI/log). Returns the file path.
+/// with a human-readable status line plus a 0.0-1.0 completion fraction (`None` while
+/// unknown, e.g. before the response headers arrive) — for the UI/log. Returns the file
+/// path.
 ///
 /// The download streams to a temporary file and is renamed into place only on success,
 /// so an interrupted download never leaves a corrupt model at the real path.
-pub async fn ensure<F: FnMut(String)>(info: &ModelInfo, mut on_progress: F) -> Result<PathBuf> {
+pub async fn ensure<F: FnMut(String, Option<f32>)>(
+    info: &ModelInfo,
+    mut on_progress: F,
+) -> Result<PathBuf> {
     let path = model_path(info)?;
     if is_present(info) {
         return Ok(path);
     }
 
-    on_progress(format!("Downloading Whisper model '{}'…", info.name));
+    on_progress(format!("Downloading Whisper model '{}'…", info.name), None);
     tracing::info!("downloading model '{}' from {}", info.name, info.url);
 
     let tmp = path.with_extension("part");
@@ -126,7 +131,10 @@ pub async fn ensure<F: FnMut(String)>(info: &ModelInfo, mut on_progress: F) -> R
         let pct = (downloaded.saturating_mul(100) / total.max(1)).min(100);
         if pct != last_pct && pct % 5 == 0 {
             last_pct = pct;
-            on_progress(format!("Downloading model '{}'… {pct}%", info.name));
+            on_progress(
+                format!("Downloading model '{}'… {pct}%", info.name),
+                Some(pct as f32 / 100.0),
+            );
             tracing::debug!("model download {pct}%");
         }
     }
@@ -143,7 +151,7 @@ pub async fn ensure<F: FnMut(String)>(info: &ModelInfo, mut on_progress: F) -> R
     }
 
     fs::rename(&tmp, &path).with_context(|| format!("finalizing {}", path.display()))?;
-    on_progress(format!("Model '{}' ready", info.name));
+    on_progress(format!("Model '{}' ready", info.name), Some(1.0));
     tracing::info!("model '{}' downloaded to {}", info.name, path.display());
     Ok(path)
 }

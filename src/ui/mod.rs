@@ -40,7 +40,14 @@ pub struct UiApp {
     api_key_saved_note: Option<String>,
     capturing_hotkey: bool,
     mic_devices: Vec<String>,
-
+    /// True until the first frame has run; used to force-hide the window once, since
+    /// `ViewportBuilder::with_visible(false)` is not always honored at creation on
+    /// Windows (the window can flash visible briefly before this fires).
+    first_frame: bool,
+    /// Set on close_requested; the actual hide command is sent on the *next* frame,
+    /// decoupled from `CancelClose`, so it isn't processed as part of the same close
+    /// sequence (which could let the window get destroyed anyway).
+    pending_hide: bool,
 }
 
 impl UiApp {
@@ -76,16 +83,32 @@ impl UiApp {
             api_key_saved_note: None,
             capturing_hotkey: false,
             mic_devices,
+            first_frame: true,
+            pending_hide: false,
         }
     }
 
+    // `Visible(false)` fully unmaps the window on Windows, which stops winit from
+    // pumping further frames for it — so a later `Visible(true)` command has nothing
+    // left to process it and the window never comes back. `Minimized(true)` keeps the
+    // window alive (just iconified), so it reliably restores; we use that to "hide" to
+    // tray instead.
     fn hide_window(&self, ctx: &egui::Context) {
-        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
     }
 }
 
 impl eframe::App for UiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // `with_visible(false)` at creation isn't always honored on Windows (the window
+        // can flash visible for a frame). Force it minimized once, on the very first frame.
+        if self.first_frame {
+            self.first_frame = false;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+            self.hide_window(ctx);
+            ctx.request_repaint();
+        }
+
         // Intercept the window close button: hide to tray instead of quitting — unless
         // the tray requested a real Quit, in which case let the window close.
         if ctx.input(|i| i.viewport().close_requested()) {
@@ -93,10 +116,21 @@ impl eframe::App for UiApp {
                 // Allow the close to proceed; eframe will exit run_native.
             } else {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-                self.hide_window(ctx);
+                self.pending_hide = true;
+                ctx.request_repaint();
             }
         }
 
+        // Send the hide command on the frame *after* CancelClose, not the same one, so
+        // it isn't coalesced into the close sequence and the window survives to be
+        // reopened later from the tray.
+        if self.pending_hide {
+            self.pending_hide = false;
+            self.hide_window(ctx);
+            ctx.request_repaint();
+        }
+
+        let prev_tab = self.tab;
         egui::TopBottomPanel::top("tabs").show(ctx, |ui| {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
@@ -106,6 +140,11 @@ impl eframe::App for UiApp {
             });
             ui.add_space(4.0);
         });
+        // Re-scan microphones whenever Settings is opened, so newly plugged-in devices
+        // (e.g. a headset connected after launch) show up without a manual refresh.
+        if prev_tab != Tab::Settings && self.tab == Tab::Settings {
+            self.mic_devices = crate::audio::enumerate_input_devices();
+        }
 
         egui::CentralPanel::default().show(ctx, |ui| match self.tab {
             Tab::Dashboard => self.dashboard(ui),
@@ -131,6 +170,7 @@ impl UiApp {
                 Status::Idle => (egui::Color32::from_rgb(0x2f, 0x6f, 0xed), status.label()),
                 Status::Listening => (egui::Color32::from_rgb(0xe0, 0x3b, 0x3b), status.label()),
                 Status::Injecting => (egui::Color32::from_rgb(0xe0, 0x8b, 0x00), status.label()),
+                Status::Downloading { .. } => (egui::Color32::from_rgb(0x00, 0x9a, 0x9a), status.label()),
                 Status::Error(_) => (egui::Color32::from_rgb(0xc0, 0x00, 0x00), status.label()),
             };
             ui.horizontal(|ui| {
@@ -157,6 +197,15 @@ impl UiApp {
             ui.end_row();
         });
 
+        // A one-time model download (e.g. first-ever Whisper use) gets its own clearly
+        // labeled progress bar here, instead of being surfaced through "Last transcript"
+        // where it could be mistaken for recognized speech.
+        if let Status::Downloading { percent, .. } = &status {
+            ui.add_space(8.0);
+            let bar = egui::ProgressBar::new(percent.unwrap_or(0.0)).show_percentage();
+            ui.add(if percent.is_some() { bar } else { bar.animate(true) });
+        }
+
         ui.add_space(12.0);
         ui.label("Last transcript:");
         let last = self.state.last_transcript();
@@ -182,7 +231,12 @@ impl UiApp {
             ui.separator();
 
             // --- Microphone ---
-            ui.label("Microphone");
+            ui.horizontal(|ui| {
+                ui.label("Microphone");
+                if ui.small_button("⟳ Refresh").clicked() {
+                    self.mic_devices = crate::audio::enumerate_input_devices();
+                }
+            });
             let current_mic = self.draft.microphone.clone().unwrap_or_else(|| "System default".into());
             egui::ComboBox::from_id_salt("mic")
                 .selected_text(current_mic)
@@ -192,6 +246,7 @@ impl UiApp {
                         ui.selectable_value(&mut self.draft.microphone, Some(dev.clone()), dev);
                     }
                 });
+            ui.weak("Newly plugged-in devices won't show until you hit Refresh.");
 
             ui.add_space(8.0);
 
@@ -235,19 +290,32 @@ impl UiApp {
 
             // --- Hotkey ---
             ui.label("Push-to-talk hotkey");
-            ui.horizontal(|ui| {
-                ui.label(self.draft.hotkey.to_string());
-                let btn = if self.capturing_hotkey { "Press keys…" } else { "Change" };
-                if ui.button(btn).clicked() {
-                    self.capturing_hotkey = !self.capturing_hotkey;
-                }
-                if self.capturing_hotkey {
-                    if let Some(hk) = capture_hotkey(ui) {
-                        self.draft.hotkey = hk;
-                        self.capturing_hotkey = false;
+            egui::ComboBox::from_id_salt("hotkey_preset")
+                .selected_text(hotkey_preset_label(&self.draft.hotkey))
+                .show_ui(ui, |ui| {
+                    for (label, hk) in hotkey_presets() {
+                        if ui.selectable_label(hotkey_matches(&self.draft.hotkey, &hk), label).clicked() {
+                            self.draft.hotkey = hk;
+                            self.capturing_hotkey = false;
+                        }
                     }
+                    if ui.selectable_label(self.capturing_hotkey, "Custom…").clicked() {
+                        self.capturing_hotkey = true;
+                    }
+                });
+
+            if self.capturing_hotkey {
+                ui.horizontal(|ui| {
+                    ui.label(self.draft.hotkey.to_string());
+                    ui.weak("Press your desired combo…");
+                });
+                if let Some(hk) = capture_hotkey(ui) {
+                    self.draft.hotkey = hk;
+                    self.capturing_hotkey = false;
                 }
-            });
+            } else {
+                ui.label(self.draft.hotkey.to_string());
+            }
             ui.weak("Tip: a modifier + a key works best, e.g. Alt + Space.");
 
             ui.add_space(8.0);
@@ -332,6 +400,30 @@ impl UiApp {
     }
 }
 
+/// Built-in hotkey choices offered in Settings, alongside a "Custom…" capture option.
+fn hotkey_presets() -> Vec<(&'static str, Hotkey)> {
+    vec![
+        ("Alt + Space", Hotkey { modifiers: vec!["alt".into()], key: "space".into() }),
+        ("Ctrl + Space", Hotkey { modifiers: vec!["ctrl".into()], key: "space".into() }),
+        ("Caps Lock", Hotkey { modifiers: vec![], key: "capslock".into() }),
+        ("` (backtick)", Hotkey { modifiers: vec![], key: "grave".into() }),
+    ]
+}
+
+fn hotkey_matches(a: &Hotkey, b: &Hotkey) -> bool {
+    a.key.eq_ignore_ascii_case(&b.key)
+        && a.modifiers.len() == b.modifiers.len()
+        && a.modifiers.iter().all(|m| b.modifiers.iter().any(|m2| m.eq_ignore_ascii_case(m2)))
+}
+
+fn hotkey_preset_label(hk: &Hotkey) -> String {
+    hotkey_presets()
+        .into_iter()
+        .find(|(_, preset)| hotkey_matches(hk, preset))
+        .map(|(label, _)| label.to_string())
+        .unwrap_or_else(|| format!("Custom ({hk})"))
+}
+
 /// Human-friendly label for a provider in the dropdown's collapsed state.
 fn provider_label(p: Provider) -> &'static str {
     match p {
@@ -360,9 +452,7 @@ fn capture_hotkey(ui: &egui::Ui) -> Option<Hotkey> {
         for key in i.keys_down.iter() {
             let name = hotkey::egui_key_name(*key);
             if let Some(name) = name {
-                if !modifiers.is_empty() || name == "space" {
-                    return Some(Hotkey { modifiers, key: name });
-                }
+                return Some(Hotkey { modifiers, key: name });
             }
         }
         None

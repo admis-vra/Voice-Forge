@@ -1,7 +1,8 @@
-//! Procedurally generated RGBA icons, so the app ships without binary image assets.
+//! App branding: the VoiceForge logo (mic + anvil), rendered as RGBA for the tray icon,
+//! window icon, and any other native surface that needs raw pixels.
 //!
-//! Each icon is a simple filled rounded square badge with a microphone glyph, tinted
-//! by status: blue when idle, red when listening.
+//! The tray icon is the logo with a small status dot baked into the corner (blue while
+//! idle, red while listening) so the tray still communicates state at a glance.
 
 /// A raw RGBA image: width, height, and `width*height*4` bytes.
 pub struct Rgba {
@@ -10,89 +11,66 @@ pub struct Rgba {
     pub bytes: Vec<u8>,
 }
 
-/// Idle badge (blue).
+/// The source logo, decoded fresh each call (cheap: a few hundred KB, done a handful of
+/// times at startup).
+fn logo() -> image::RgbaImage {
+    let bytes = include_bytes!("../assets/logo.png");
+    image::load_from_memory(bytes)
+        .expect("bundled logo.png must decode")
+        .to_rgba8()
+}
+
+/// The plain logo at `size`×`size`, no status dot — used for the window icon.
+pub fn app_icon(size: u32) -> Rgba {
+    let resized = image::imageops::resize(&logo(), size, size, image::imageops::FilterType::Lanczos3);
+    Rgba {
+        width: size,
+        height: size,
+        bytes: resized.into_raw(),
+    }
+}
+
+/// Idle tray badge: logo with a blue status dot.
 pub fn idle() -> Rgba {
     badge([0x2f, 0x6f, 0xed, 0xff])
 }
 
-/// Listening badge (red).
+/// Listening tray badge: logo with a red status dot.
 pub fn listening() -> Rgba {
     badge([0xe0, 0x3b, 0x3b, 0xff])
 }
 
-/// Renders a 32×32 rounded-square badge in `color` with a white microphone glyph.
-fn badge(color: [u8; 4]) -> Rgba {
-    const S: i32 = 32;
-    let mut bytes = vec![0u8; (S * S * 4) as usize];
+/// Renders the logo at tray size with a filled status-color dot in the bottom-right corner.
+fn badge(dot_color: [u8; 4]) -> Rgba {
+    const S: u32 = 32;
+    let mut img = image::imageops::resize(&logo(), S, S, image::imageops::FilterType::Lanczos3);
 
-    let put = |bytes: &mut [u8], x: i32, y: i32, c: [u8; 4]| {
-        if x < 0 || y < 0 || x >= S || y >= S {
-            return;
-        }
-        let i = ((y * S + x) * 4) as usize;
-        bytes[i..i + 4].copy_from_slice(&c);
-    };
-
-    // Rounded-square background.
-    let radius = 7;
-    for y in 0..S {
-        for x in 0..S {
-            if inside_rounded(x, y, S, radius) {
-                put(&mut bytes, x, y, color);
-            }
-        }
-    }
-
-    // Microphone glyph (white): capsule body + stand.
-    let white = [0xff, 0xff, 0xff, 0xff];
-    // Capsule body: a vertical rounded bar.
-    for y in 7..=18 {
-        for x in 13..=18 {
-            let near_edge = x == 13 || x == 18;
-            // Round the top/bottom corners a touch.
-            if (y == 7 || y == 18) && near_edge {
+    let cx = S as i32 - 8;
+    let cy = S as i32 - 8;
+    let r = 7;
+    // White ring so the dot reads clearly against any background pixel underneath it.
+    for y in -r - 1..=r + 1 {
+        for x in -r - 1..=r + 1 {
+            let px = cx + x;
+            let py = cy + y;
+            if px < 0 || py < 0 || px >= S as i32 || py >= S as i32 {
                 continue;
             }
-            put(&mut bytes, x, y, white);
+            let dist2 = x * x + y * y;
+            let color = if dist2 <= r * r {
+                dot_color
+            } else if dist2 <= (r + 1) * (r + 1) {
+                [0xff, 0xff, 0xff, 0xff]
+            } else {
+                continue;
+            };
+            img.put_pixel(px as u32, py as u32, image::Rgba(color));
         }
-    }
-    // Stand arc (approximate) + neck + base.
-    for x in 10..=21 {
-        put(&mut bytes, x, 20, white);
-    }
-    for y in 20..=24 {
-        put(&mut bytes, 10, y, white);
-        put(&mut bytes, 21, y, white);
-    }
-    for y in 20..=25 {
-        put(&mut bytes, 15, y, white);
-        put(&mut bytes, 16, y, white);
-    }
-    for x in 12..=19 {
-        put(&mut bytes, x, 26, white);
     }
 
     Rgba {
-        width: S as u32,
-        height: S as u32,
-        bytes,
+        width: S,
+        height: S,
+        bytes: img.into_raw(),
     }
-}
-
-/// True if the pixel is inside a rounded square of side `s` with corner `radius`.
-fn inside_rounded(x: i32, y: i32, s: i32, radius: i32) -> bool {
-    let (mut cx, mut cy) = (x, y);
-    // Reflect into the top-left corner region for a single distance test.
-    if cx > s - 1 - radius {
-        cx = s - 1 - cx;
-    }
-    if cy > s - 1 - radius {
-        cy = s - 1 - cy;
-    }
-    if cx >= radius || cy >= radius {
-        return true;
-    }
-    let dx = radius - cx;
-    let dy = radius - cy;
-    dx * dx + dy * dy <= radius * radius
 }

@@ -119,7 +119,15 @@ impl Session {
         let ev_state = self.state.clone();
         let on_event = move |ev: TranscriptEvent| match ev {
             TranscriptEvent::Interim(t) => ev_state.set_last_transcript(t),
-            TranscriptEvent::Final(t) => ev_state.set_last_transcript(t),
+            TranscriptEvent::Final(t) => {
+                ev_state.set_last_transcript(t);
+                // A chunk just finished transcribing while still recording; restore the
+                // status a Progress event may have overwritten with "Downloading…".
+                ev_state.set_status(Status::Listening);
+            }
+            TranscriptEvent::Progress { message, percent } => {
+                ev_state.set_status(Status::Downloading { message, percent });
+            }
         };
 
         let cfg_for_task = cfg.clone();
