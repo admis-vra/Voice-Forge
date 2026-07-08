@@ -165,7 +165,7 @@ body::before {
 .hero {
   max-width: var(--maxw);
   margin: 0 auto;
-  padding: 90px 24px 120px;
+  padding: 40px 24px 120px;
   text-align: center;
   min-height: 82vh;
   display: flex;
@@ -173,7 +173,7 @@ body::before {
   justify-content: center;
 }
 .pill {
-  align-self: center;
+  display: inline-block;
   font-size: 0.8rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
